@@ -2,68 +2,68 @@
 package backend.main;
 
 import backend.model.*;
-import backend.service.*;
+import backend.database.DatabaseConnection;
 
-import java.util.ArrayList;
+import java.sql.*;
 import java.util.Scanner;
 
 public class UniMartApp {
 
     private static Scanner sc = new Scanner(System.in);
 
-    // Application data
-    private static ArrayList<Student> students = new ArrayList<>();
-
-    // Services
-    private static ProductService productService = new ProductService();
-    private static TransactionService transactionService =
-            new TransactionService();
-    private static GroupBuyingService groupService =
-            new GroupBuyingService();
-
-    private static int nextUserId = 1;
-    private static int nextProductId = 101;
+    // Database connection
+    private static Connection conn;
 
     public static void main(String[] args) {
 
-        System.out.println("========================================");
-        System.out.println("               UNIMART");
-        System.out.println("       THE UNIVERSITY COMMERCE NETWORK");
-        System.out.println("     One Campus. Endless Possibilities.");
-        System.out.println("========================================");
+        try (Connection connection = DatabaseConnection.getConnection()) {
 
-        while (true) {
+            conn = connection;
 
-            System.out.println("\n========== MAIN MENU ==========");
-            System.out.println("1. Register");
-            System.out.println("2. Login");
-            System.out.println("3. Exit");
+            System.out.println("========================================");
+            System.out.println("               UNIMART");
+            System.out.println("       THE UNIVERSITY COMMERCE NETWORK");
+            System.out.println("     One Campus. Endless Possibilities.");
+            System.out.println("========================================");
 
-            int choice = readInt("Enter choice: ");
+            while (true) {
 
-            switch (choice) {
+                System.out.println("\n========== MAIN MENU ==========");
+                System.out.println("1. Register");
+                System.out.println("2. Login");
+                System.out.println("3. Exit");
 
-                case 1:
-                    registerStudent();
-                    break;
+                int choice = readInt("Enter choice: ");
 
-                case 2:
-                    Student student = loginStudent();
+                switch (choice) {
 
-                    if (student != null) {
-                        studentDashboard(student);
-                    }
-                    break;
+                    case 1:
+                        registerStudent(conn);
+                        break;
 
-                case 3:
-                    System.out.println("Thank you for using UniMart!");
-                    sc.close();
-                    return;
+                    case 2:
+                        Student student = loginStudent(conn);
 
-                default:
-                    System.out.println("Invalid choice. Try again.");
+                        if (student != null) {
+                            studentDashboard(conn, student);
+                        }
+                        break;
+
+                    case 3:
+                        System.out.println("Thank you for using UniMart!");
+                        return;
+
+                    default:
+                        System.out.println("Invalid choice. Try again.");
+                }
             }
+
+        } catch (SQLException e) {
+            System.out.println("Database connection error!");
+            e.printStackTrace();
         }
+
+        sc.close();
     }
 
     // Safe integer input
@@ -94,8 +94,11 @@ public class UniMartApp {
         }
     }
 
-    // Student Registration
-    private static void registerStudent() {
+    // ==========================================
+    // STUDENT REGISTRATION
+    // ==========================================
+
+    private static void registerStudent(Connection conn) {
 
         System.out.println("\n========== REGISTRATION ==========");
 
@@ -118,33 +121,31 @@ public class UniMartApp {
             return;
         }
 
-        for (Student s : students) {
+        String query = "INSERT INTO students "
+                + "(student_id, name, email, password, university) "
+                + "VALUES ('" + studentId + "', '" + name + "', '"
+                + email + "', '" + password
+                + "', 'Chitkara University')";
 
-            if (s.getEmail().equalsIgnoreCase(email)
-                    || s.getStudentId().equalsIgnoreCase(studentId)) {
+        try (Statement s = conn.createStatement()) {
 
-                System.out.println("Account already exists.");
-                return;
+            int rows = s.executeUpdate(query);
+
+            if (rows > 0) {
+                System.out.println("\nRegistration successful!");
             }
+
+        } catch (SQLException e) {
+
+            System.out.println("Registration failed. Email or Student ID may already exist.");
         }
-
-        Student student = new Student(
-                nextUserId++,
-                name,
-                email,
-                password,
-                studentId,
-                "Chitkara University"
-        );
-
-        students.add(student);
-
-        System.out.println("\nRegistration successful!");
-        System.out.println("Your User ID: " + student.getUserId());
     }
 
-    // Student Login
-    private static Student loginStudent() {
+    // ==========================================
+    // STUDENT LOGIN
+    // ==========================================
+
+    private static Student loginStudent(Connection conn) {
 
         System.out.println("\n========== STUDENT LOGIN ==========");
 
@@ -154,24 +155,42 @@ public class UniMartApp {
         System.out.print("Password: ");
         String password = sc.nextLine();
 
-        for (Student student : students) {
+        String query = "SELECT * FROM students WHERE email = '"
+                + email + "' AND password = '" + password + "'";
 
-            if (student.getEmail().equalsIgnoreCase(email)
-                    && student.checkPassword(password)) {
+        try (Statement s = conn.createStatement();
+             ResultSet rs = s.executeQuery(query)) {
+
+            if (rs.next()) {
+
+                Student student = new Student(
+                        rs.getInt("user_id"),
+                        rs.getString("name"),
+                        rs.getString("email"),
+                        rs.getString("password"),
+                        rs.getString("student_id"),
+                        rs.getString("university")
+                );
 
                 System.out.println("\nLogin successful!");
                 System.out.println("Welcome, " + student.getName());
 
                 return student;
             }
+
+        } catch (SQLException e) {
+            e.printStackTrace();
         }
 
         System.out.println("Invalid email or password.");
         return null;
     }
 
-    // Student Dashboard
-    private static void studentDashboard(Student student) {
+    // ==========================================
+    // STUDENT DASHBOARD
+    // ==========================================
+
+    private static void studentDashboard(Connection conn, Student student) {
 
         while (true) {
 
@@ -192,27 +211,27 @@ public class UniMartApp {
             switch (choice) {
 
                 case 1:
-                    productService.displayProducts();
+                    displayProducts(conn);
                     break;
 
                 case 2:
-                    searchProduct();
+                    searchProduct(conn);
                     break;
 
                 case 3:
-                    sellProduct(student);
+                    sellProduct(conn, student);
                     break;
 
                 case 4:
-                    purchaseProduct(student);
+                    purchaseProduct(conn, student);
                     break;
 
                 case 5:
-                    groupBuyingMenu(student);
+                    groupBuyingMenu(conn, student);
                     break;
 
                 case 6:
-                    viewTransactions(student);
+                    viewTransactions(conn, student);
                     break;
 
                 case 7:
@@ -229,28 +248,110 @@ public class UniMartApp {
         }
     }
 
-    // Search Products
-    private static void searchProduct() {
+    // ==========================================
+    // DISPLAY PRODUCTS
+    // ==========================================
+
+    private static void displayProducts(Connection conn) {
+
+        String query = "SELECT * FROM products WHERE available = TRUE";
+
+        try (Statement s = conn.createStatement();
+             ResultSet rs = s.executeQuery(query)) {
+
+            System.out.println("\n========== AVAILABLE PRODUCTS ==========");
+
+            boolean found = false;
+
+            while (rs.next()) {
+
+                found = true;
+
+                System.out.println("\nProduct ID: "
+                        + rs.getInt("product_id"));
+
+                System.out.println("Name: "
+                        + rs.getString("name"));
+
+                System.out.println("Category: "
+                        + rs.getString("category"));
+
+                System.out.println("Price: Rs. "
+                        + rs.getDouble("price"));
+
+                System.out.println("Condition: "
+                        + rs.getString("product_condition"));
+
+                System.out.println("Seller ID: "
+                        + rs.getInt("seller_id"));
+
+                System.out.println("--------------------------");
+            }
+
+            if (!found) {
+                System.out.println("No products available.");
+            }
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    // ==========================================
+    // SEARCH PRODUCTS
+    // ==========================================
+
+    private static void searchProduct(Connection conn) {
 
         System.out.print("Enter product name: ");
         String name = sc.nextLine().trim();
 
-        Product product = productService.searchProduct(name);
+        String query = "SELECT * FROM products WHERE name LIKE '%"
+                + name + "%' AND available = TRUE";
 
-        if (product != null) {
-            System.out.println(product);
-        } else {
-            System.out.println("Product not found.");
+        try (Statement s = conn.createStatement();
+             ResultSet rs = s.executeQuery(query)) {
+
+            boolean found = false;
+
+            while (rs.next()) {
+
+                found = true;
+
+                System.out.println("\nProduct ID: "
+                        + rs.getInt("product_id"));
+
+                System.out.println("Name: "
+                        + rs.getString("name"));
+
+                System.out.println("Category: "
+                        + rs.getString("category"));
+
+                System.out.println("Price: Rs. "
+                        + rs.getDouble("price"));
+
+                System.out.println("--------------------------");
+            }
+
+            if (!found) {
+                System.out.println("Product not found.");
+            }
+
+        } catch (SQLException e) {
+            e.printStackTrace();
         }
     }
 
-    // Sell a Product
-    private static void sellProduct(Student student) {
+    // ==========================================
+    // SELL A PRODUCT
+    // ==========================================
+
+    private static void sellProduct(Connection conn, Student student) {
 
         System.out.println("\n========== SELL PRODUCT ==========");
-        System.out.println("1. Electronics & Gadgets");
-        System.out.println("2. Books, Notes & Stationery");
-        System.out.println("3. Fashion & Lifestyle");
+        System.out.println("1. Electronics");
+        System.out.println("2. Books");
+        System.out.println("3. Fashion");
 
         int category = readInt("Select category: ");
 
@@ -274,16 +375,18 @@ public class UniMartApp {
             switch (category) {
 
                 case 1:
+
                     System.out.print("Brand: ");
                     String brand = sc.nextLine();
 
                     product = new Electronics(
-                            nextProductId++, name, price,
-                            condition, student.getUserId(), brand
+                            0, name, price, condition,
+                            student.getUserId(), brand
                     );
                     break;
 
                 case 2:
+
                     System.out.print("Author: ");
                     String author = sc.nextLine();
 
@@ -291,13 +394,13 @@ public class UniMartApp {
                     String subject = sc.nextLine();
 
                     product = new Book(
-                            nextProductId++, name, price,
-                            condition, student.getUserId(),
-                            author, subject
+                            0, name, price, condition,
+                            student.getUserId(), author, subject
                     );
                     break;
 
                 case 3:
+
                     System.out.print("Size: ");
                     String size = sc.nextLine();
 
@@ -305,9 +408,8 @@ public class UniMartApp {
                     String fashionBrand = sc.nextLine();
 
                     product = new Fashion(
-                            nextProductId++, name, price,
-                            condition, student.getUserId(),
-                            size, fashionBrand
+                            0, name, price, condition,
+                            student.getUserId(), size, fashionBrand
                     );
                     break;
 
@@ -316,34 +418,121 @@ public class UniMartApp {
                     return;
             }
 
-            productService.addProduct(product);
+            addProduct(conn, product);
 
         } catch (IllegalArgumentException e) {
             System.out.println(e.getMessage());
         }
     }
 
-    // Purchase a Product
-    private static void purchaseProduct(Student student) {
+    // INSERT PRODUCT INTO DATABASE
 
-        System.out.println("\n========== PURCHASE PRODUCT ==========");
+    private static void addProduct(Connection conn, Product product) {
 
-        productService.displayProducts();
+        String query = "INSERT INTO products "
+                + "(name, category, price, product_condition, seller_id) "
+                + "VALUES ('" + product.getName() + "', '"
+                + product.getCategory() + "', "
+                + product.getPrice() + ", '"
+                + product.getCondition() + "', "
+                + product.getSellerId() + ")";
 
-        int productId = readInt("\nEnter Product ID: ");
+        try (Statement s = conn.createStatement()) {
 
-        try {
+            int rows = s.executeUpdate(query);
 
-            productService.purchaseProduct(productId, student);
+            if (rows > 0) {
+                System.out.println("Product listed successfully!");
+            }
 
-        } catch (IllegalArgumentException e) {
-
-            System.out.println("Purchase failed: " + e.getMessage());
+        } catch (SQLException e) {
+            e.printStackTrace();
         }
     }
 
-    // Group Buying Menu
-    private static void groupBuyingMenu(Student student) {
+    // ==========================================
+    // PURCHASE PRODUCT
+    // ==========================================
+
+    private static void purchaseProduct(Connection conn, Student student) {
+
+        System.out.println("\n========== PURCHASE PRODUCT ==========");
+
+        displayProducts(conn);
+
+        int productId = readInt("\nEnter Product ID: ");
+
+        String query = "SELECT * FROM products WHERE product_id = "
+                + productId + " AND available = TRUE";
+
+        try (Statement s = conn.createStatement();
+             ResultSet rs = s.executeQuery(query)) {
+
+            if (!rs.next()) {
+                System.out.println("Product not found or unavailable.");
+                return;
+            }
+
+            int sellerId = rs.getInt("seller_id");
+            double amount = rs.getDouble("price");
+
+            if (sellerId == student.getUserId()) {
+                System.out.println("You cannot purchase your own product.");
+                return;
+            }
+
+            conn.setAutoCommit(false);
+
+            try (Statement update = conn.createStatement();
+                 Statement insert = conn.createStatement()) {
+
+                String updateQuery =
+                        "UPDATE products SET available = FALSE "
+                        + "WHERE product_id = " + productId
+                        + " AND available = TRUE";
+
+                int updated = update.executeUpdate(updateQuery);
+
+                if (updated == 0) {
+                    conn.rollback();
+                    System.out.println("Product is no longer available.");
+                    return;
+                }
+
+                String insertQuery =
+                        "INSERT INTO transactions "
+                        + "(buyer_id, seller_id, product_id, amount, status) "
+                        + "VALUES (" + student.getUserId() + ", "
+                        + sellerId + ", " + productId + ", "
+                        + amount + ", 'Completed')";
+
+                insert.executeUpdate(insertQuery);
+
+                conn.commit();
+
+                System.out.println("Purchase successful!");
+                System.out.println("Amount: Rs. " + amount);
+
+            } catch (SQLException e) {
+
+                conn.rollback();
+                System.out.println("Purchase failed.");
+                e.printStackTrace();
+
+            } finally {
+                conn.setAutoCommit(true);
+            }
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    // ==========================================
+    // GROUP BUYING MENU
+    // ==========================================
+
+    private static void groupBuyingMenu(Connection conn, Student student) {
 
         while (true) {
 
@@ -358,15 +547,15 @@ public class UniMartApp {
             switch (choice) {
 
                 case 1:
-                    groupService.displayGroups();
+                    displayGroups(conn);
                     break;
 
                 case 2:
-                    createGroup();
+                    createGroup(conn);
                     break;
 
                 case 3:
-                    joinGroup(student);
+                    joinGroup(conn, student);
                     break;
 
                 case 4:
@@ -378,62 +567,253 @@ public class UniMartApp {
         }
     }
 
-    // Create Group Purchase
-    private static void createGroup() {
+    // ==========================================
+    // CREATE GROUP PURCHASE
+    // ==========================================
+
+    private static void createGroup(Connection conn) {
 
         System.out.println("\n========== CREATE GROUP ==========");
 
-        productService.displayProducts();
+        displayProducts(conn);
 
         int productId = readInt("\nEnter Product ID: ");
 
-        Product product = productService.getProductById(productId);
-
         int minimum = readInt("Minimum participants: ");
 
-        try {
+        if (minimum <= 0) {
+            System.out.println("Minimum participants must be positive.");
+            return;
+        }
 
-            GroupPurchase group =
-                    groupService.createGroup(product, minimum);
+        String query = "INSERT INTO group_purchases "
+                + "(product_id, minimum_participants) "
+                + "SELECT product_id, " + minimum
+                + " FROM products WHERE product_id = "
+                + productId + " AND available = TRUE";
 
-            System.out.println("Group created successfully!");
-            System.out.println("Group ID: " + group.getGroupId());
+        try (Statement s = conn.createStatement()) {
 
-        } catch (IllegalArgumentException e) {
+            int rows = s.executeUpdate(query);
 
-            System.out.println("Error: " + e.getMessage());
+            if (rows > 0) {
+                System.out.println("Group purchase created successfully!");
+            } else {
+                System.out.println("Product not found or unavailable.");
+            }
+
+        } catch (SQLException e) {
+            e.printStackTrace();
         }
     }
 
-    // Join Group Purchase
-    private static void joinGroup(Student student) {
+    // ==========================================
+    // DISPLAY GROUP OFFERS
+    // ==========================================
+
+    private static void displayGroups(Connection conn) {
+
+        String query =
+                "SELECT g.group_id, p.name, p.price, "
+                + "g.minimum_participants, g.status, "
+                + "COUNT(gm.student_id) AS participants "
+                + "FROM group_purchases g "
+                + "JOIN products p ON g.product_id = p.product_id "
+                + "LEFT JOIN group_members gm ON g.group_id = gm.group_id "
+                + "GROUP BY g.group_id, p.name, p.price, "
+                + "g.minimum_participants, g.status";
+
+        try (Statement s = conn.createStatement();
+             ResultSet rs = s.executeQuery(query)) {
+
+            boolean found = false;
+
+            while (rs.next()) {
+
+                found = true;
+
+                int count = rs.getInt("participants");
+
+                double price = rs.getDouble("price");
+
+                double discount = calculateDiscount(count);
+
+                double finalPrice = price - (price * discount / 100);
+
+                System.out.println("\nGroup ID: "
+                        + rs.getInt("group_id"));
+
+                System.out.println("Product: "
+                        + rs.getString("name"));
+
+                System.out.println("Original Price: Rs. " + price);
+
+                System.out.println("Participants: " + count);
+
+                System.out.println("Minimum Required: "
+                        + rs.getInt("minimum_participants"));
+
+                System.out.println("Discount: " + discount + "%");
+
+                System.out.println("Final Price: Rs. " + finalPrice);
+
+                System.out.println("Status: "
+                        + rs.getString("status"));
+
+                System.out.println("--------------------------");
+            }
+
+            if (!found) {
+                System.out.println("No group purchases available.");
+            }
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    // ==========================================
+    // JOIN GROUP PURCHASE
+    // ==========================================
+
+    private static void joinGroup(Connection conn, Student student) {
 
         System.out.println("\n========== JOIN GROUP ==========");
 
-        groupService.displayGroups();
+        displayGroups(conn);
 
         int groupId = readInt("\nEnter Group ID: ");
 
-        try {
+        String query = "INSERT INTO group_members "
+                + "(group_id, student_id) "
+                + "SELECT group_id, " + student.getUserId()
+                + " FROM group_purchases "
+                + "WHERE group_id = " + groupId
+                + " AND status = 'Active'";
 
-            groupService.joinGroup(groupId, student);
+        try (Statement s = conn.createStatement()) {
 
-        } catch (IllegalArgumentException |
-                 IllegalStateException e) {
+            int rows = s.executeUpdate(query);
 
-            System.out.println("Unable to join: " + e.getMessage());
+            if (rows > 0) {
+
+                System.out.println("Successfully joined group!");
+
+                displayGroupProgress(conn, groupId);
+
+            } else {
+                System.out.println("Group not found or inactive.");
+            }
+
+        } catch (SQLException e) {
+
+            System.out.println(
+                    "Unable to join. You may already be a participant."
+            );
         }
     }
 
-    // View Transactions
-    private static void viewTransactions(Student student) {
+    // ==========================================
+    // GROUP BUYING DISCOUNT
+    // ==========================================
+
+    private static double calculateDiscount(int participants) {
+
+        if (participants >= 20) {
+            return 15;
+        } else if (participants >= 10) {
+            return 10;
+        } else if (participants >= 5) {
+            return 5;
+        }
+
+        return 0;
+    }
+
+    // ==========================================
+    // DISPLAY GROUP PROGRESS
+    // ==========================================
+
+    private static void displayGroupProgress(
+            Connection conn, int groupId) {
+
+        String query =
+                "SELECT COUNT(*) AS participants "
+                + "FROM group_members WHERE group_id = " + groupId;
+
+        try (Statement s = conn.createStatement();
+             ResultSet rs = s.executeQuery(query)) {
+
+            if (rs.next()) {
+
+                int count = rs.getInt("participants");
+
+                System.out.println("Current participants: " + count);
+
+                System.out.println("Current discount: "
+                        + calculateDiscount(count) + "%");
+            }
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    // ==========================================
+    // VIEW TRANSACTION HISTORY
+    // ==========================================
+
+    private static void viewTransactions(
+            Connection conn, Student student) {
 
         System.out.println("\n========== MY TRANSACTIONS ==========");
 
-        // TransactionService integration will be completed
-        // after resolving seller references in the service layer.
+        String query =
+                "SELECT t.*, p.name AS product_name "
+                + "FROM transactions t "
+                + "JOIN products p ON t.product_id = p.product_id "
+                + "WHERE t.buyer_id = " + student.getUserId()
+                + " OR t.seller_id = " + student.getUserId();
 
-        System.out.println("Transaction history integration pending.");
+        try (Statement s = conn.createStatement();
+             ResultSet rs = s.executeQuery(query)) {
+
+            boolean found = false;
+
+            while (rs.next()) {
+
+                found = true;
+
+                System.out.println("\nTransaction ID: "
+                        + rs.getInt("transaction_id"));
+
+                System.out.println("Product: "
+                        + rs.getString("product_name"));
+
+                System.out.println("Amount: Rs. "
+                        + rs.getDouble("amount"));
+
+                System.out.println("Status: "
+                        + rs.getString("status"));
+
+                System.out.println("Date: "
+                        + rs.getTimestamp("transaction_date"));
+
+                if (rs.getInt("buyer_id") == student.getUserId()) {
+                    System.out.println("Type: Purchase");
+                } else {
+                    System.out.println("Type: Sale");
+                }
+
+                System.out.println("--------------------------");
+            }
+
+            if (!found) {
+                System.out.println("No transactions found.");
+            }
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
     }
 }
-

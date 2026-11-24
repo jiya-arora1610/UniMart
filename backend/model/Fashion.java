@@ -24,7 +24,7 @@ public class Fashion extends Product {
 
     @Override
     public String getCategory() {
-        return "Fashion & Lifestyle";
+        return "Fashion";
     }
 
     @Override

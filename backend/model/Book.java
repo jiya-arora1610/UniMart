@@ -25,7 +25,7 @@ public class Book extends Product {
 
     @Override
     public String getCategory() {
-        return "Books, Notes & Stationery";
+        return "Books";
     }
 
     @Override
